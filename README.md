@@ -313,9 +313,11 @@ This is the single biggest remaining lift on the FAIE score — the evaluator ca
 
 ## Known gaps
 
-- No virtualised list yet — pagination caps the DOM, but a 10k-row "show all"
-  would still mount 10k cards
 - Mock-data-only receipt kinds (movie, message, search, event, note) have no
   real-dataset coverage; loading Spotify or transactions narrows the type pills
-
+- The real-dataset paths are large; the app paginates the grid so they never
+  mount all rows, but a "show all" path would still mount every row in the DOM
+- CSS containment (`contain: layout paint` on `.receipt-grid`) reduces the cost of scrolling and
+  re-filtering for large datasets, but a full virtual list would be a bigger win for e.g. 100k+
+  row datasets
 
