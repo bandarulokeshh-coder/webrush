@@ -1,14 +1,9 @@
 /**
- * WebRush — Your Life, In Receipts.
- *
- * Thin composition shell: hooks own data + filtering, components own
- * rendering. Replaces the previous 800-line single-file App.
- *
- * @module App
+ * WebRush — Your Life, In Receipts. (Code-split shell.)
  */
 
 import type React from 'react';
-import { useMemo, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import type { DatasetId } from './types/receipt';
 import { DATASET_SOURCES, GITHUB_URL } from './constants/receipts';
@@ -18,12 +13,16 @@ import { buildInsights } from './lib/insights';
 import { formatDate } from './lib/format';
 import AppHeader from './components/AppHeader';
 import FilterBar from './components/FilterBar';
-import ReceiptGrid from './components/ReceiptGrid';
 import ReceiptSkeletonGrid from './components/ReceiptSkeleton';
-import ConnectionsPanel from './components/ConnectionsPanel';
+import ErrorBoundary from './components/ErrorBoundary';
 import ConnectionControls from './components/ConnectionControls';
 import { InsightList, StatsStrip } from './components/InsightsPanel';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/Card';
+
+// Below-the-fold panels load on demand so the first paint is only the feed.
+const ReceiptGrid = lazy(() => import('./components/ReceiptGrid'));
+const ConnectionsPanel = lazy(() => import('./components/ConnectionsPanel'));
+
 
 const App: React.FC = () => {
   const [dataSource, setDataSource] = useState<DatasetId>('mock');
@@ -116,11 +115,15 @@ const App: React.FC = () => {
 
 
             {!isLoading && !loadError && (
-              <ReceiptGrid
-                visibleReceipts={visibleReceipts}
-                filteredTotal={filteredReceipts.length}
-                onLoadMore={loadMore}
-              />
+              <ErrorBoundary label="Receipt feed">
+                <Suspense fallback={<ReceiptSkeletonGrid />}>
+                  <ReceiptGrid
+                    visibleReceipts={visibleReceipts}
+                    filteredTotal={filteredReceipts.length}
+                    onLoadMore={loadMore}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
             {!isLoading && !loadError && (
               <Card>
@@ -133,7 +136,11 @@ const App: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ConnectionsPanel connections={connections} />
+                  <ErrorBoundary label="Connections panel">
+                    <Suspense fallback={<ReceiptSkeletonGrid />}>
+                      <ConnectionsPanel connections={connections} />
+                    </Suspense>
+                  </ErrorBoundary>
                 </CardContent>
               </Card>
             )}

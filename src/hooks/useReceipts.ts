@@ -35,6 +35,9 @@ const initialState = (): Record<DatasetId, DatasetLoadState> => ({
   indiaTransact: { status: 'idle', count: 0 },
 });
 
+/** In-memory cache of parsed receipts per dataset (module scope = app lifetime). */
+const datasetCache = new Map<DatasetId, Receipt[]>();
+
 /**
  * Loads the active dataset exactly once per source change.
  *
@@ -72,15 +75,23 @@ export const useReceipts = (dataSource: DatasetId) => {
           const source = DATASET_SOURCES.find((entry) => entry.id === dataSource);
           if (!source?.path) throw new Error(`Unknown dataset "${dataSource}"`);
 
-          const response = await fetch(source.path);
-          if (!response.ok) throw new Error(`Failed to fetch (${response.status})`);
+          // Cache parsed receipts in memory so switching back to a dataset
+          // never re-downloads or re-parses the CSV.
+          const cached = datasetCache.get(dataSource);
+          if (cached) {
+            next = cached;
+          } else {
+            const response = await fetch(source.path);
+            if (!response.ok) throw new Error(`Failed to fetch (${response.status})`);
 
-          const csvText = await response.text();
-          if (dataSource === 'spotify') next = parseSpotifyCsv(csvText);
-          else if (dataSource === 'transactions') next = parseTransactionsCsv(csvText);
-          else {
-            const { purchases, places } = parseIndiaTransactCsv(csvText);
-            next = [...purchases, ...places];
+            const csvText = await response.text();
+            if (dataSource === 'spotify') next = parseSpotifyCsv(csvText);
+            else if (dataSource === 'transactions') next = parseTransactionsCsv(csvText);
+            else {
+              const { purchases, places } = parseIndiaTransactCsv(csvText);
+              next = [...purchases, ...places];
+            }
+            datasetCache.set(dataSource, next);
           }
         }
 

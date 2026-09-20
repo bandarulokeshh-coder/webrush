@@ -119,6 +119,7 @@ npm run dev      # Vite dev server on http://localhost:5173
 | `npm run build` | Type-check (`tsc -b`) then produce a production bundle in `dist/` |
 | `npm run preview` | Serve the built bundle locally |
 | `npm run lint` | Run oxlint |
+| `npm test` | Run the vitest suite (28 tests) |
 
 ## Project structure
 
@@ -132,10 +133,10 @@ src/
   hooks/
     useReceipts.ts           Dataset fetch/parse with cancellation + retry
     useFilteredConnections.ts  Filters, search, pagination + typed connections
-  lib/
+    lib/
     utils.ts                 cn() — clsx + tailwind-merge
     connections.ts           Six O(n + m) detectors + findAllConnections
-    csv.ts                   Pure CSV parsers (unit-testable, no DOM)
+    csv.ts                   Pure CSV parsers (unit-tested, no DOM)
     format.ts                Cached Intl formatters, currency, durations
     insights.ts              Feed-span / busiest-hour / top-artist findings
     mockData.ts              Seeded (mulberry32) synthetic demo dataset
@@ -149,6 +150,7 @@ src/
     ConnectionsPanel.tsx     Typed connection groups (no any probing)
     ConnectionControls.tsx   Sensitivity slider + six detector toggles
     InsightsPanel.tsx        Stat tiles + auto-generated insights
+    ErrorBoundary.tsx        Crash boundary with retry
     ThemeToggle.tsx          Light/dark toggle, persisted to localStorage
     ui/
       Card.tsx               Card / Header / Title / Description / Content

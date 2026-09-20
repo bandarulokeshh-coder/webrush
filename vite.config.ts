@@ -5,13 +5,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   build: {
-    // Keep the initial bundle lean: motion + lucide-react ship in their own
-    // chunk so the receipt grid paints before the animation runtime arrives.
+    // lucide-react ships in its own chunk so the receipt grid paints first.
+    // (motion was removed entirely — entrance animation is now pure CSS.)
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes('node_modules/motion')) return 'motion';
           if (id.includes('node_modules/lucide-react')) return 'icons';
           return undefined;
         },

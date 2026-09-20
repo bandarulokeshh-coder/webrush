@@ -1,5 +1,4 @@
 import type React from 'react';
-import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 
 // Import the receipt types from the canonical domain model
@@ -34,6 +33,8 @@ const Detail: React.FC<{ children: React.ReactNode; className?: string }> = ({ c
 );
 
 const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }) => {
+  // Perforated edge + monospace meta: the card reads as a paper receipt,
+  // which is the entire product metaphor ("Your Life, In Receipts").
   const { Icon, gradient, label } = RECEIPT_VISUALS[receipt.type] ?? FALLBACK_VISUAL;
 
   const renderBody = () => {
@@ -132,13 +133,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
   };
 
   return (
-    <motion.div
-      layout="position"
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ duration: 0.25, delay: Math.min(index, 16) * 0.02, ease: 'easeOut' }}
-      whileHover={onClick ? { y: -4 } : undefined}
+    <div
       onClick={onClick}
       onKeyDown={
         onClick
@@ -153,13 +148,19 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       aria-label={onClick ? `View ${receipt.type} receipt details` : undefined}
+      style={{ animationDelay: `${Math.min(index, 16) * 30}ms` }}
       className={cn(
-        'group h-full rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow duration-200',
-        'hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-black/30',
+        'group relative h-full animate-[receipt-in_0.35s_ease-out_both] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow duration-200',
+        'hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-black/30',
         onClick && 'cursor-pointer',
       )}
     >
-      <div className="flex items-start gap-3 px-4 py-3">
+      {/* Perforated receipt edge */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 w-0 border-l-2 border-dashed border-gray-200 dark:border-slate-700"
+      />
+      <div className="flex items-start gap-3 px-4 py-3 pl-5">
         <div
           className={cn(
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm',
@@ -171,13 +172,30 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         </div>
         <div className="flex-1 space-y-0.5">
           <div className={cn('text-sm font-medium capitalize', label)}>{receipt.type}</div>
-          <div className="text-xs text-gray-500 dark:text-slate-400">{formatTimestamp(receipt.timestamp)}</div>
+          <div className="font-mono text-[11px] tracking-tight text-gray-500 dark:text-slate-400">
+            {formatTimestamp(receipt.timestamp)}
+          </div>
+        </div>
+        <div className="font-mono text-[10px] text-gray-300 dark:text-slate-600">
+          № {receipt.id.slice(-6).toUpperCase()}
         </div>
       </div>
 
       {/* Type-specific content */}
-      <div className="border-t border-gray-50 px-4 py-3 dark:border-slate-800/60">{renderBody()}</div>
-    </motion.div>
+      <div className="border-t border-dashed border-gray-200 px-4 py-3 pl-5 dark:border-slate-800/60">
+        {renderBody()}
+      </div>
+      {/* Barcode footer */}
+      <div aria-hidden="true" className="flex h-4 items-stretch gap-[2px] px-4 pb-2 pl-5 opacity-40">
+        {Array.from({ length: 24 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-gray-400 dark:bg-slate-500"
+            style={{ width: `${1 + ((receipt.id.charCodeAt(i % receipt.id.length) + i) % 3)}px` }}
+          />
+        ))}
+      </div>
+    </div>
   );
 };
 
