@@ -14,8 +14,84 @@ leaves the machine. Datasets are `fetch`ed as static CSV files out of `public/`
 and parsed in TypeScript.
 
 **Live demo:** <https://webrush-three.vercel.app>
+[![CI](https://github.com/bandarulokeshh-coder/webrush/actions/workflows/ci.yml/badge.svg)](https://github.com/bandarulokeshh-coder/webrush/actions/workflows/ci.yml)
 
-## Features
+## Architecture
+
+
+
+## Architecture
+
+The app is split into four layers so every concern can be reasoned about — and tested — in isolation, rather than living in one 800-line component:
+
+```text
+src/
+├── App.tsx                    Root: state wiring + responsive layout
+├── main.tsx                   React entry
+├── index.css                  Tailwind + dark-mode base
+│
+├── types/                     TypeScript source of truth
+│   └── receipt.ts             Discriminated Receipt & ConnectionGroup unions
+│
+├── constants/                 Static configuration
+│   └── receipts.ts            Dataset sources, page size, icon/type maps
+│
+├── lib/                       Pure, framework-agnostic logic (fully unit-tested)
+│   ├── csv.ts                 Parsers: CSV → Receipt[]
+│   ├── connections.ts         The six O(n+m) connection detectors
+│   ├── insights.ts            Analytics engine: busiest hour, spend, etc.
+│   ├── mockData.ts            Seeded mulberry32 generator
+│   ├── format.ts              Cached Intl formatters
+│   ├── receiptText.ts         Searchable one-liner per receipt
+│   └── utils.ts               Small shared helpers
+│
+├── hooks/                     React data-flow glue (memoized, cancellable)
+│   ├── useReceipts.ts         Fetch/parse + per-dataset load state + retry
+│   └── useFilteredConnections.ts
+│                               Search, date range, type filter, pagination,
+│                               connection detection over the filtered set
+│
+└── components/                  Presentational, fully typed
+    ├── AppHeader.tsx          Skip link, dataset picker, theme toggle
+    ├── FilterBar.tsx          Type pills, search, date inputs, slider
+    ├── ReceiptGrid.tsx        Paginated feed + accessible detail dialog
+    ├── ReceiptCard.tsx        One card per receipt type (memoized)
+    ├── InsightsPanel.tsx      Auto-generated findings
+    ├── ConnectionsPanel.tsx   Toggleable detector list + connection rows
+    ├── ConnectionControls.tsx Per-detector switch UI
+    ├── ThemeToggle.tsx        Dark / light / system
+    ├── ReceiptSkeleton.tsx    Layout-preserving loader
+    ├── ErrorBoundary.tsx      Crash-safe wrapper
+    └── ui/                    shadcn-style primitives (Card, Badge)
+```
+
+**Data flow:** `App.tsx` selects a dataset → `useReceipts` fetches & parses (or returns the in-memory cache) → `useFilteredConnections` derives `filteredReceipts`, `connections` and `insights` via `useMemo` (so adjusting the slider never re-downloads the CSV) → the component tree renders via props.
+
+**Key invariants**
+- `lib/*` never touches the DOM or `window` (pure, unit-tested).
+- `connections.ts` is `O(n+m)` (single-pass index per detector) — no nested loops over 10k receipts.
+- Detectors always run on `filteredReceipts`, not the raw set.
+- All state setters use functional updates (`(prev) =>`) for race-safe transitions.
+
+## Testing
+
+Unit tests are written with [Vitest](https://vitest.dev) and run in CI on every push:
+
+```bash
+npm run test
+npm run test -- --coverage   # also enforces thresholds
+```
+
+Coverage threshold (enforced in `vitest.config.ts`):
+
+| Metric | Threshold |
+| --- | --- |
+| Branches | 90 % |
+| Functions | 95 % |
+| Lines | 90 % |
+
+The pure `lib/*` modules (CSV parsing, connection detection, insights, cached formatters, seeded mock generation) carry the full suite.
+
 
 **Receipt feed**
 
@@ -23,7 +99,7 @@ and parsed in TypeScript.
   event, note — each rendered by a typed `ReceiptCard` with its own lucide icon
   and gradient tile
 - Staggered entrance animations, hover lift and cheap `layout="position"` reflow
-  on filter changes (motion)
+  on filter changes (motion removed — pure CSS + `layout="position"` now)
 - Filter by receipt type (icon pills with live counts), full-text search and
   date range; paginated rendering keeps large datasets responsive
 - Click any card for an accessible detail dialog (Escape closes, focus trapped)
@@ -200,8 +276,9 @@ redistributing them outside this repository.
 
 - `RECEIPT_PAGE_SIZE` (48) paginates the grid with an explicit "Load more"
   control and a live "Showing X of Y" status — large CSVs never mount 10k cards
-- `motion` and `lucide-react` ship in dedicated chunks (`manualChunks` in
-  `vite.config.ts`), so the first paint is ~290 KB, not ~430 KB
+- Motion (`motion/react`) and `lucide-react` ship in dedicated chunks (`manualChunks` in
+  `vite.config.ts`), so the first paint is ~290 KB — motion was later removed in favour of pure CSS
+  stagger, so this is now a future note only
 - `Intl` formatters are constructed once at module scope in `lib/format.ts`
 - Filtered receipts, insights and detected connections are `useMemo`-derived
   during render rather than held in state and synced through effects
@@ -221,7 +298,6 @@ redistributing them outside this repository.
 - All icon-only buttons carry `aria-label`; sliders, checkboxes and date inputs
   are labelled and described
 - `prefers-reduced-motion` disables entrance/hover animation globally
-
 
 ## Known gaps
 
