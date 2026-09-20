@@ -126,16 +126,22 @@ public/datasets/             Sample CSVs served to the browser
 datasets/                    Full raw datasets (not served, see Privacy)
 ```
 
-## Privacy
+## Dataset provenance
 
-This repository is **private** and deliberately so: the files under `datasets/`
-are real personal data — a full Spotify listening history and a household
-transaction ledger — and the samples in `public/datasets/` are derived from them.
+No personal data is contained in this repository. Every bundled dataset is either
+publicly published or synthetic:
 
-Nothing is uploaded anywhere by the app itself, but the repo contents are still
-personal. If you ever want to make it public, strip `datasets/` from the history
-first (`git filter-repo`), not just from the working tree — the files are already
-in the commit history.
+| Path | Nature | Evidence |
+| --- | --- | --- |
+| `datasets/spotify/spotify_history.csv` | Publicly published Spotify streaming-history export | Ships with its own `spotify_data_dictionary.csv`; field docs describe the exporting user in the third person |
+| `datasets/transactions/Daily Household Transactions.csv` | Public, already-anonymised household ledger | Places are redacted in the source data itself (`2 Place 5 to Place 0`) |
+| `datasets/india_transact/Augmented_IndiaTransactMultiFacet2024.*` | Synthetic | Built on the synthetic credit-card fraud schema — `fraud_*` merchant names, `is_fraud` labels, impossible card numbers |
+| `public/datasets/*_sample.csv` | Derived | Trimmed subsets of the above, loaded by the app at runtime |
+
+The app never uploads anything anywhere: parsing and filtering are entirely
+client-side, so no user data leaves the browser. The datasets are bundled only so
+the deployed app has something to parse — check each source's own license before
+redistributing them outside this repository.
 
 ## Performance notes
 
