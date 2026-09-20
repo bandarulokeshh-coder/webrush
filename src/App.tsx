@@ -12,6 +12,11 @@ import {
   findActivityChains,
   findAllConnections
 } from './utils/data';
+import {
+  loadSpotifyData,
+  loadTransactionData,
+  loadIndiaTransactData
+} from './utils/dataLoader';
 import './App.css';
 
 // Mock data generator for demonstration
@@ -187,23 +192,92 @@ const App: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [timeDiffThreshold, setTimeDiffThreshold] = useState<number>(3600000); // 1 hour in ms
   const [selectedConnectionTypes, setSelectedConnectionTypes] = useState<Set<string>>(new Set(['temporal']));
+  const [dataSource, setDataSource] = useState<'mock' | 'spotify' | 'transactions' | 'india'>('mock');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Initialize with mock data
+  // Load data based on dataSource
   useEffect(() => {
-    const mockData = generateMockData();
-    setReceipts(mockData);
-    setFilteredReceipts(mockData);
+    let isCancelled = false;
 
-    // Calculate initial connections
-    const allConnections = findAllConnections(mockData, {
-      temporalThresholdMs: timeDiffThreshold,
-      includeLocation: true,
-      includeArtist: true,
-      includeSocial: true,
-      includeChains: true
-    });
-    setAllConnections(allConnections);
-  }, [timeDiffThreshold]);
+    const loadData = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      let loadedReceipts: Receipt[] = [];
+
+      try {
+        switch (dataSource) {
+          case 'mock':
+            loadedReceipts = generateMockData();
+            break;
+          case 'spotify':
+            const spotifyResponse = await fetch('/datasets/spotify_sample.csv');
+            if (!spotifyResponse.ok) throw new Error('Failed to load Spotify sample');
+            const spotifyText = await spotifyResponse.text();
+            const musicReceipts = loadSpotifyData(spotifyText);
+            loadedReceipts = musicReceipts.map(mr => ({ ...mr }) as Receipt);
+            break;
+          case 'transactions':
+            const txnResponse = await fetch('/datasets/transactions_sample.csv');
+            if (!txnResponse.ok) throw new Error('Failed to load transactions sample');
+            const txnText = await txnResponse.text();
+            const purchaseReceipts = loadTransactionData(txnText);
+            loadedReceipts = purchaseReceipts.map(pr => ({ ...pr }) as Receipt);
+            break;
+          case 'india':
+            const indiaResponse = await fetch('/datasets/india_transact_sample.csv');
+            if (!indiaResponse.ok) throw new Error('Failed to load India Transact sample');
+            const indiaText = await indiaResponse.text();
+            const { purchases, places } = loadIndiaTransactData(indiaText);
+            loadedReceipts = [...purchases.map(p => ({ ...p }) as Receipt), ...places.map(pl => ({ ...pl }) as Receipt)];
+            break;
+        }
+
+        if (!isCancelled) {
+          setReceipts(loadedReceipts);
+          setFilteredReceipts(loadedReceipts);
+
+          // Calculate initial connections
+          const allConnections = findAllConnections(loadedReceipts, {
+            temporalThresholdMs: timeDiffThreshold,
+            includeLocation: selectedConnectionTypes.has('location'),
+            includeArtist: selectedConnectionTypes.has('artist'),
+            includeSocial: selectedConnectionTypes.has('social'),
+            includeChains: selectedConnectionTypes.has('chain')
+          });
+          setAllConnections(allConnections);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Unknown error');
+          console.error('Data loading error:', error);
+          // Fallback to mock data on error
+          const mockData = generateMockData();
+          setReceipts(mockData);
+          setFilteredReceipts(mockData);
+
+          const allConnections = findAllConnections(mockData, {
+            temporalThresholdMs: timeDiffThreshold,
+            includeLocation: selectedConnectionTypes.has('location'),
+            includeArtist: selectedConnectionTypes.has('artist'),
+            includeSocial: selectedConnectionTypes.has('social'),
+            includeChains: selectedConnectionTypes.has('chain')
+          });
+          setAllConnections(allConnections);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [dataSource, timeDiffThreshold, selectedConnectionTypes]);
 
   // Filter receipts by type
   useEffect(() => {
@@ -276,6 +350,77 @@ const App: React.FC = () => {
         <p className="text-lg text-gray-600 max-w-2xl">
           Explore the connections in your digital life - transform disconnected moments into meaningful stories
         </p>
+
+        {/* Data Source Controls */}
+        <div className="flex flex-wrap gap-4 mt-4">
+          <div className="flex items-center space-x-3">
+            <span className="text-sm font-medium text-gray-700">Data Source:</span>
+            <div className="flex space-x-2">
+              <label className="flex items-center space-x-1">
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value="mock"
+                  checked={dataSource === 'mock'}
+                  onChange={(e) => setDataSource(e.target.value)}
+                  className="h-4 w-4 text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">Mock Data</span>
+              </label>
+              <label className="flex items-center space-x-1">
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value="spotify"
+                  checked={dataSource === 'spotify'}
+                  onChange={(e) => setDataSource(e.target.value)}
+                  className="h-4 w-4 text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">Spotify Sample</span>
+              </label>
+              <label className="flex items-center space-x-1">
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value="transactions"
+                  checked={dataSource === 'transactions'}
+                  onChange={(e) => setDataSource(e.target.value)}
+                  className="h-4 w-4 text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">Transactions Sample</span>
+              </label>
+              <label className="flex items-center space-x-1">
+                <input
+                  type="radio"
+                  name="dataSource"
+                  value="india"
+                  checked={dataSource === 'india'}
+                  onChange={(e) => setDataSource(e.target.value)}
+                  className="h-4 w-4 text-indigo-600"
+                />
+                <span className="text-sm text-gray-700">India Transact Sample</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Loading Status */}
+          {isLoading && (
+            <div className="flex items-center space-x-2 text-sm text-indigo-600">
+              <div className="flex h-5 w-5 items-center justify-center rounded border border-indigo-300">
+                <div className="h-2.5 w-2.5 bg-indigo-600 rounded-full animate-ping"></div>
+              </div>
+              <span>Loading data...</span>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {loadError && (
+            <div className="flex items-center space-x-2 text-sm text-red-600 bg-red-50 px-3 py-1 rounded">
+              <span className="text-red-500">⚠️</span>
+              <span>{loadError}</span>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-6">
