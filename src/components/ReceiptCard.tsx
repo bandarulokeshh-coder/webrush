@@ -1,21 +1,8 @@
-import React from 'react';
+import type React from 'react';
 import { motion } from 'motion/react';
-import {
-  Music,
-  Film,
-  MapPin,
-  ShoppingBag,
-  Camera,
-  MessageSquare,
-  Search,
-  Calendar,
-  StickyNote,
-  HelpCircle,
-  type LucideIcon,
-} from 'lucide-react';
 import { cn } from '../lib/utils';
 
-// Import the receipt types from our utils
+// Import the receipt types from the canonical domain model
 import type {
   Receipt,
   MusicReceipt,
@@ -26,8 +13,10 @@ import type {
   MessageReceipt,
   SearchReceipt,
   EventReceipt,
-  NoteReceipt
-} from '../utils/data';
+  NoteReceipt,
+} from '../types/receipt';
+import { FALLBACK_VISUAL, RECEIPT_VISUALS } from '../constants/receipts';
+import { formatCurrency, formatDuration, formatTimestamp } from '../lib/format';
 
 interface ReceiptCardProps {
   receipt: Receipt;
@@ -35,42 +24,6 @@ interface ReceiptCardProps {
   /** Position in the grid — drives the staggered entrance animation */
   index?: number;
 }
-
-interface IconStyle {
-  Icon: LucideIcon;
-  /** Gradient applied to the icon tile */
-  gradient: string;
-  /** Accent color for the receipt-type label */
-  label: string;
-}
-
-const ICON_STYLES: Record<string, IconStyle> = {
-  music: { Icon: Music, gradient: 'from-indigo-400 to-purple-500', label: 'text-indigo-600 dark:text-indigo-300' },
-  movie: { Icon: Film, gradient: 'from-red-500 to-orange-400', label: 'text-rose-600 dark:text-rose-300' },
-  place: { Icon: MapPin, gradient: 'from-green-400 to-emerald-500', label: 'text-emerald-600 dark:text-emerald-300' },
-  purchase: { Icon: ShoppingBag, gradient: 'from-blue-500 to-indigo-400', label: 'text-blue-600 dark:text-blue-300' },
-  photo: { Icon: Camera, gradient: 'from-pink-400 to-rose-500', label: 'text-pink-600 dark:text-pink-300' },
-  message: { Icon: MessageSquare, gradient: 'from-yellow-400 to-amber-500', label: 'text-amber-600 dark:text-amber-300' },
-  search: { Icon: Search, gradient: 'from-gray-400 to-slate-500', label: 'text-slate-600 dark:text-slate-300' },
-  event: { Icon: Calendar, gradient: 'from-teal-400 to-cyan-500', label: 'text-teal-600 dark:text-teal-300' },
-  note: { Icon: StickyNote, gradient: 'from-violet-400 to-purple-500', label: 'text-violet-600 dark:text-violet-300' },
-};
-
-const FALLBACK_STYLE: IconStyle = {
-  Icon: HelpCircle,
-  gradient: 'from-gray-400 to-slate-500',
-  label: 'text-slate-600 dark:text-slate-300',
-};
-
-// Format timestamp for display
-const formatTimestamp = (timestamp: string) =>
-  new Date(timestamp).toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
 
 const Title: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
   <p className={cn('text-sm font-semibold text-gray-700 dark:text-slate-100', className)}>{children}</p>
@@ -81,24 +34,28 @@ const Detail: React.FC<{ children: React.ReactNode; className?: string }> = ({ c
 );
 
 const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }) => {
-  const { Icon, gradient, label } = ICON_STYLES[receipt.type] ?? FALLBACK_STYLE;
+  const { Icon, gradient, label } = RECEIPT_VISUALS[receipt.type] ?? FALLBACK_VISUAL;
 
   const renderBody = () => {
+    // The switch narrows the discriminated union, so each branch sees the
+    // exact variant — no `as` casts needed.
     switch (receipt.type) {
       case 'music': {
-        const music = receipt as MusicReceipt;
+        const music: MusicReceipt = receipt;
+        const duration = formatDuration(music.duration);
         return (
           <div className="space-y-1">
             <Title>{music.track}</Title>
             <Detail>
               {music.artist}
               {music.album ? ` · ${music.album}` : ''}
+              {duration ? ` · ${duration}` : ''}
             </Detail>
           </div>
         );
       }
       case 'movie': {
-        const movie = receipt as MovieReceipt;
+        const movie: MovieReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>{movie.title}</Title>
@@ -107,7 +64,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'place': {
-        const place = receipt as PlaceReceipt;
+        const place: PlaceReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>{place.name}</Title>
@@ -116,18 +73,16 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'purchase': {
-        const purchase = receipt as PurchaseReceipt;
+        const purchase: PurchaseReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>{purchase.item}</Title>
-            <Detail>
-              {purchase.price} {purchase.currency}
-            </Detail>
+            <Detail>{formatCurrency(purchase.price, purchase.currency)}</Detail>
           </div>
         );
       }
       case 'photo': {
-        const photo = receipt as PhotoReceipt;
+        const photo: PhotoReceipt = receipt;
         return (
           <div className="space-y-1">
             {photo.caption && <Title>{photo.caption}</Title>}
@@ -136,7 +91,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'message': {
-        const message = receipt as MessageReceipt;
+        const message: MessageReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>From: {message.sender}</Title>
@@ -145,7 +100,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'search': {
-        const search = receipt as SearchReceipt;
+        const search: SearchReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>&quot;{search.query}&quot;</Title>
@@ -154,7 +109,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'event': {
-        const event = receipt as EventReceipt;
+        const event: EventReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title>{event.title}</Title>
@@ -163,7 +118,7 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
         );
       }
       case 'note': {
-        const note = receipt as NoteReceipt;
+        const note: NoteReceipt = receipt;
         return (
           <div className="space-y-1">
             <Title className="line-clamp-2">{note.content}</Title>
@@ -185,10 +140,23 @@ const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onClick, index = 0 }
       transition={{ duration: 0.25, delay: Math.min(index, 16) * 0.02, ease: 'easeOut' }}
       whileHover={onClick ? { y: -4 } : undefined}
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `View ${receipt.type} receipt details` : undefined}
       className={cn(
         'group h-full rounded-xl border border-gray-100 bg-white shadow-sm transition-shadow duration-200',
         'hover:shadow-lg dark:border-slate-800 dark:bg-slate-900/70 dark:shadow-black/30',
-        onClick && 'cursor-pointer'
+        onClick && 'cursor-pointer',
       )}
     >
       <div className="flex items-start gap-3 px-4 py-3">

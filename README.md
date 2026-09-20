@@ -24,21 +24,26 @@ and parsed in TypeScript.
   and gradient tile
 - Staggered entrance animations, hover lift and cheap `layout="position"` reflow
   on filter changes (motion)
-- Filter by receipt type and date range; up to 250 cards rendered at once to keep
-  large datasets responsive
+- Filter by receipt type (icon pills with live counts), full-text search and
+  date range; paginated rendering keeps large datasets responsive
+- Click any card for an accessible detail dialog (Escape closes, focus trapped)
 
 **Connection detection**
 
-- Six detectors run over the visible receipt set and produce typed connections
-  with an explanation and a confidence score
-- Toggle which detectors are active; tune how close in time two events must be
-  with a 5–120 minute sensitivity slider
+- Six detectors run over the *filtered* receipt set and produce typed
+  connections via a discriminated `ConnectionGroup` union (no `any` probing)
+- Every detector has its own toggle — including temporal and location-name —
+  and the temporal window is tuned with a 5-minute to 6-hour sensitivity slider
+- Connections panel shows typed rows with counts; empty state suggests widening
+  the sensitivity or enabling more detectors
 
 **Four data sources**
 
-- Mock data (generated in-app), plus three real datasets: Spotify listening
-  history, household transactions, and IndiaTransact card transactions
-- Each loads asynchronously with animated loading and error states
+- Mock data (seeded in-app, identical on every reload), plus three real
+  datasets: Spotify listening history, household transactions, and
+  IndiaTransact card transactions
+- Each loads asynchronously with skeleton placeholders, animated loading and
+  error states with retry
 
 **Presentation**
 
@@ -46,7 +51,14 @@ and parsed in TypeScript.
   before first paint (no flash of the wrong theme)
 - shadcn-style `Card` / `Badge` primitives, `cn()` class merging, animated pill
   selectors and custom checkboxes
-- Fully dark-mode styled, keyboard accessible controls with proper ARIA roles
+- Fully dark-mode styled, keyboard accessible controls with proper ARIA roles,
+  skip link, focus-visible rings and `prefers-reduced-motion` support
+
+**Insights**
+
+- Auto-generated findings beside the feed: feed span, busiest hour, most played
+  artist, most visited place, costliest month and connection density
+- Insights derive from the *filtered* set, so narrowing the feed updates the story
 
 ## Connection types
 
@@ -59,11 +71,13 @@ and parsed in TypeScript.
 | Social | `social` | Involve the same people |
 | Activity chain | `chain` | Form a repeatable sequence, e.g. event → photo → note |
 
-Detectors live in `src/utils/data.ts` (`findTemporalConnections`,
+Detectors live in `src/lib/connections.ts` (`findTemporalConnections`,
 `findLocationConnections`, `findArtistConnections`, `findLocationNameConnections`,
 `findSocialConnections`, `findActivityChains`) and are composed by
-`findAllConnections`, which takes the sensitivity threshold and the enabled
-detector flags and returns a sorted list of connections.
+`findAllConnections`, which takes the sensitivity threshold and one flag per
+detector (`includeTemporal`, `includeLocation`, `includeLocationName`,
+`includeArtist`, `includeSocial`, `includeChains`). Every hot loop builds a
+lookup index once (`O(n + m)`) instead of scanning pairwise (`O(n²)`).
 
 ## Tech stack
 
@@ -110,20 +124,35 @@ npm run dev      # Vite dev server on http://localhost:5173
 
 ```
 src/
-  App.tsx                    Data source, filters, stats, connection panel
+  App.tsx                    Thin composition shell (state lives in hooks)
   main.tsx                   React entry point
-  index.css                  Tailwind import + dark variant + color-scheme
+  index.css                  Tailwind import + dark variant + focus + reduced motion
+  types/receipt.ts           Receipt + connection domain model (discriminated unions)
+  constants/receipts.ts      Icons, labels, dataset sources, thresholds
+  hooks/
+    useReceipts.ts           Dataset fetch/parse with cancellation + retry
+    useFilteredConnections.ts  Filters, search, pagination + typed connections
+  lib/
+    utils.ts                 cn() — clsx + tailwind-merge
+    connections.ts           Six O(n + m) detectors + findAllConnections
+    csv.ts                   Pure CSV parsers (unit-testable, no DOM)
+    format.ts                Cached Intl formatters, currency, durations
+    insights.ts              Feed-span / busiest-hour / top-artist findings
+    mockData.ts              Seeded (mulberry32) synthetic demo dataset
+    receiptText.ts           One-line searchable summary per receipt
   components/
+    AppHeader.tsx            Title, dataset pills, theme toggle
+    FilterBar.tsx            Search + type pills + date range
+    ReceiptGrid.tsx          Paginated grid + accessible detail dialog
     ReceiptCard.tsx          Typed receipt card, icon tiles, entrance animation
+    ReceiptSkeleton.tsx      Loading skeleton matching the grid
+    ConnectionsPanel.tsx     Typed connection groups (no any probing)
+    ConnectionControls.tsx   Sensitivity slider + six detector toggles
+    InsightsPanel.tsx        Stat tiles + auto-generated insights
     ThemeToggle.tsx          Light/dark toggle, persisted to localStorage
     ui/
       Card.tsx               Card / Header / Title / Description / Content
       Badge.tsx              Badge with CVA variants
-  lib/
-    utils.ts                 cn() — clsx + tailwind-merge
-  utils/
-    data.ts                  Receipt + connection types and the detectors
-    dataLoader.ts            CSV parsing for each dataset
 public/datasets/             Sample CSVs served to the browser
 datasets/                    Full raw datasets (not served, see Dataset provenance)
 ```
@@ -167,23 +196,36 @@ redistributing them outside this repository.
 
 ## Performance notes
 
-- `MAX_VISIBLE_RECEIPTS` (250) caps how many cards render at once; the UI states
-  how many are hidden rather than silently truncating
-- Filtered receipts and detected connections are `useMemo`-derived during render
-  rather than held in state and synced through effects
+- `RECEIPT_PAGE_SIZE` (48) paginates the grid with an explicit "Load more"
+  control and a live "Showing X of Y" status — large CSVs never mount 10k cards
+- `motion` and `lucide-react` ship in dedicated chunks (`manualChunks` in
+  `vite.config.ts`), so the first paint is ~290 KB, not ~430 KB
+- `Intl` formatters are constructed once at module scope in `lib/format.ts`
+- Filtered receipts, insights and detected connections are `useMemo`-derived
+  during render rather than held in state and synced through effects
 - The dataset-fetch effect depends only on the selected data source, so changing
   the sensitivity slider or a detector toggle re-runs detection without
   re-downloading and re-parsing the CSV
 - Cards use `layout="position"` so the grid animates cheaply instead of measuring
   scale for every element
+- Skeletons mirror the grid layout while loading, avoiding layout shift
+
+## Accessibility notes
+
+- Skip link, landmark roles (`main` / `aside` / `tablist` / `dialog`), live
+  regions for stats and connection counts
+- Receipt cards are keyboard-operable (`Enter`/`Space`) with visible
+  `focus-visible` rings; detail dialog closes on `Escape`
+- All icon-only buttons carry `aria-label`; sliders, checkboxes and date inputs
+  are labelled and described
+- `prefers-reduced-motion` disables entrance/hover animation globally
+
 
 ## Known gaps
 
-- The receipt-type filter is still a native `<select>` (emoji labels) rather than
-  the animated pill control used for data sources — native `<option>` elements
-  cannot render lucide icons
-- `location-name` connections are detected and displayed but are not yet exposed
-  as a toggle in the connection-type checklist
-- Only the first 250 matching receipts are shown at a time; there is no
-  pagination or virtualised list yet
+- No virtualised list yet — pagination caps the DOM, but a 10k-row "show all"
+  would still mount 10k cards
+- Mock-data-only receipt kinds (movie, message, search, event, note) have no
+  real-dataset coverage; loading Spotify or transactions narrows the type pills
+
 
