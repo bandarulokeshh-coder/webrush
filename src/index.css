@@ -37,6 +37,15 @@ body {
 }
 
 /* Respect users who ask for less motion */
+/* ── Performance: CSS containment on grid areas ──────────────────────────────── */
+/* Containment tells the browser a subtree is independent, so scrolling/animating
+   inside it doesn't trigger full-layout recalculations on the parent. This is the
+   cheapest "virtualization lite" for a paginated grid. */
+.receipt-grid {
+  contain: layout paint;
+  contain-intrinsic-size: 0 300px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -46,5 +55,11 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Prevent layout-shift from the dialog overlay */
+dialog,
+[role="dialog"] {
+  contain: layout style;
 }
 

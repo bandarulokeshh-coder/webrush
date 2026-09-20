@@ -1,0 +1,18 @@
+[
+  {
+    "path": "dist/assets/index-*.js",
+    "name": "App shell (index)",
+    "limit": "250 KB"
+  },
+  {
+    "path": "dist/assets/icons-*.js",
+    "name": "Icons (lucide-react)",
+    "limit": "25 KB"
+  },
+  {
+    "path": "dist/assets/*.css",
+    "name": "Styles",
+    "limit": "50 KB"
+  }
+]
+

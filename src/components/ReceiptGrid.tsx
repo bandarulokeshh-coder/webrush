@@ -39,7 +39,7 @@ const ReceiptGrid: React.FC<ReceiptGridProps> = ({ visibleReceipts, filteredTota
   }, [selected]);
 
   return (
-    <section aria-label="Receipt feed">
+    <section aria-label="Receipt feed" className="receipt-grid">
       {deferredReceipts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
           <p className="text-sm font-medium text-gray-700 dark:text-slate-200">Nothing matches</p>
