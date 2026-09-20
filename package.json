@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-        "test": "vitest run",
+    "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -b --noEmit",
     "perf": "size-limit",
@@ -20,9 +20,11 @@
     "lucide-react": "^1.47.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-window": "^1.8.11",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.14.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
@@ -30,11 +32,10 @@
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
+    "size-limit": "^11.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1",
-    "size-limit": "^11.0.0",
-    "@lhci/cli": "^0.14.0"
+    "vitest": "^5.0.1"
   }
 }
