@@ -1,16 +1,40 @@
 // Utility to load and parse real datasets into our Receipt types
 
-import {
+import type {
   MusicReceipt,
   PurchaseReceipt,
-  PlaceReceipt,
-  PhotoReceipt,
-  MessageReceipt,
-  SearchReceipt,
-  EventReceipt,
-  NoteReceipt,
-  Receipt
+  PlaceReceipt
 } from './data';
+
+// Parse a single CSV line, respecting quoted fields that contain commas
+// e.g. `a,"Say It, Just Say It",b` -> ['a', 'Say It, Just Say It', 'b']
+export const parseCSVLine = (line: string): string[] => {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped quote inside a quoted field
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current);
+  return values;
+};
 
 // Parse Spotify data into MusicReceipts
 export const loadSpotifyData = (csvText: string): MusicReceipt[] => {
@@ -23,11 +47,11 @@ export const loadSpotifyData = (csvText: string): MusicReceipt[] => {
 
   for (const line of dataLines) {
     try {
-      // Parse CSV line (simple split, assuming no commas in quoted fields)
-      const values = line.split(',');
+      // Parse CSV line (handles quoted fields with commas, e.g. "Say It, Just Say It")
+      const values = parseCSVLine(line);
       if (values.length < 9) continue;
 
-      const [spotifyTrackUri, ts, platform, msPlayedStr, trackName, artistName, albumName, reasonStart, reasonEnd, shuffleStr, skippedStr] = values;
+      const [spotifyTrackUri, ts, , msPlayedStr, trackName, artistName, albumName] = values;
 
       const msPlayed = parseInt(msPlayedStr, 10);
       const duration = msPlayed > 0 ? Math.max(30, msPlayed / 1000) : 180; // Default to 3min if not played
@@ -43,6 +67,7 @@ export const loadSpotifyData = (csvText: string): MusicReceipt[] => {
         timestamp: ts, // Already in ISO-like format: "2013-07-08 02:44:34"
         artist: cleanArtistName,
         track: cleanTrackName,
+        album: cleanAlbumName,
         duration: duration // in seconds
       });
     } catch (error) {
@@ -65,11 +90,11 @@ export const loadTransactionData = (csvText: string): PurchaseReceipt[] => {
 
   for (const line of dataLines) {
     try {
-      // Parse CSV line
-      const values = line.split(',');
+      // Parse CSV line (handles quoted fields with commas)
+      const values = parseCSVLine(line);
       if (values.length < 8) continue;
 
-      const [date, mode, category, subcategory, note, amountStr, incomeExpense, currency] = values;
+      const [date, mode, category, , note, amountStr, incomeExpense, currency] = values;
 
       // Only consider expenses for purchase receipts
       if (incomeExpense.trim().toLowerCase() !== 'expense') continue;
@@ -122,11 +147,11 @@ export const loadIndiaTransactData = (csvText: string): {
 
   for (const line of dataLines) {
     try {
-      // Parse CSV line
-      const values = line.split(',');
+      // Parse CSV line (handles quoted fields with commas, e.g. "Surveyor, hydrographic")
+      const values = parseCSVLine(line);
       if (values.length < 15) continue;
 
-      const [transIdStr, transDateTransTime, ccNumStr, merchant, category, amtStr, first, last, gender, street, city, state, latStr, longStr, cityPopStr, job, dob, merchLatStr, merchLongStr, isFraudStr, customerIdStr] = values;
+      const [transIdStr, transDateTransTime, , merchant, category, amtStr, first, last, , street, city, state, , , , , , merchLatStr, merchLongStr] = values;
 
       const amount = parseFloat(amtStr);
       if (isNaN(amount) || amount <= 0) continue;
@@ -226,5 +251,6 @@ export default {
   loadTransactionData,
   loadIndiaTransactData,
   loadCSVData,
-  fetchAndLoadDataset
+  fetchAndLoadDataset,
+  parseCSVLine
 };

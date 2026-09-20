@@ -1,23 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'motion/react';
+import { Clock, Network, Database, Sparkles, AlertCircle, Loader2, MapPin, Music, Users, Link2, type LucideIcon } from 'lucide-react';
 import ReceiptCard from './components/ReceiptCard';
-import {
+import ThemeToggle from './components/ThemeToggle';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
+import { Badge } from './components/ui/Badge';
+import { cn } from './lib/utils';
+import type {
   Receipt,
-  groupByType,
-  sortByTimestamp,
-  findTemporalConnections,
-  findLocationConnections,
-  findArtistConnections,
-  findLocationNameConnections,
-  findSocialConnections,
-  findActivityChains,
-  findAllConnections
+  MusicReceipt,
+  MovieReceipt,
+  PlaceReceipt,
+  PurchaseReceipt,
+  PhotoReceipt,
+  MessageReceipt,
+  SearchReceipt,
+  EventReceipt,
+  NoteReceipt
 } from './utils/data';
+import { findAllConnections } from './utils/data';
 import {
   loadSpotifyData,
   loadTransactionData,
   loadIndiaTransactData
 } from './utils/dataLoader';
 import './App.css';
+
+// Max number of receipt cards rendered at once - keeps large datasets smooth
+const MAX_VISIBLE_RECEIPTS = 250;
+
+// Icon + label used for each connection type across the dashboard
+const CONNECTION_ICONS: Record<string, LucideIcon> = {
+  temporal: Clock,
+  location: MapPin,
+  artist: Music,
+  'location-name': MapPin,
+  social: Users,
+  chain: Link2
+};
+
+const CONNECTION_LABELS: Record<string, string> = {
+  temporal: 'Temporal',
+  location: 'Location-based',
+  artist: 'Artist/Mentions',
+  'location-name': 'Location Names',
+  social: 'Social Connections',
+  chain: 'Activity Chains'
+};
+
+const StatTile: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+    <p className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">{label}</p>
+    <p className="mt-1 text-lg font-semibold text-gray-900 tabular-nums dark:text-white">{value}</p>
+  </div>
+);
 
 // Mock data generator for demonstration
 const generateMockData = (): Receipt[] => {
@@ -175,7 +211,7 @@ const generateMockData = (): Receipt[] => {
       type: 'note',
       timestamp: randomTimestamp(startDate, endDate),
       content: notes[i % notes.length],
-      tags: ['idea', 'reminder', 'recipe', 'workout', 'read-later'][Math.floor(Math.random() * 5)]
+      tags: [['idea', 'reminder', 'recipe', 'workout', 'read-later'][Math.floor(Math.random() * 5)]]
     });
   }
 
@@ -184,11 +220,6 @@ const generateMockData = (): Receipt[] => {
 
 const App: React.FC = () => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [filteredReceipts, setFilteredReceipts] = useState<Receipt[]>([]);
-  const [allConnections, setAllConnections] = useState<Array<{
-    type: 'temporal' | 'location' | 'artist' | 'location-name' | 'social' | 'chain';
-    data: any;
-  }>>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [timeDiffThreshold, setTimeDiffThreshold] = useState<number>(3600000); // 1 hour in ms
   const [selectedConnectionTypes, setSelectedConnectionTypes] = useState<Set<string>>(new Set(['temporal']));
@@ -235,35 +266,13 @@ const App: React.FC = () => {
 
         if (!isCancelled) {
           setReceipts(loadedReceipts);
-          setFilteredReceipts(loadedReceipts);
-
-          // Calculate initial connections
-          const allConnections = findAllConnections(loadedReceipts, {
-            temporalThresholdMs: timeDiffThreshold,
-            includeLocation: selectedConnectionTypes.has('location'),
-            includeArtist: selectedConnectionTypes.has('artist'),
-            includeSocial: selectedConnectionTypes.has('social'),
-            includeChains: selectedConnectionTypes.has('chain')
-          });
-          setAllConnections(allConnections);
         }
       } catch (error) {
         if (!isCancelled) {
           setLoadError(error instanceof Error ? error.message : 'Unknown error');
           console.error('Data loading error:', error);
           // Fallback to mock data on error
-          const mockData = generateMockData();
-          setReceipts(mockData);
-          setFilteredReceipts(mockData);
-
-          const allConnections = findAllConnections(mockData, {
-            temporalThresholdMs: timeDiffThreshold,
-            includeLocation: selectedConnectionTypes.has('location'),
-            includeArtist: selectedConnectionTypes.has('artist'),
-            includeSocial: selectedConnectionTypes.has('social'),
-            includeChains: selectedConnectionTypes.has('chain')
-          });
-          setAllConnections(allConnections);
+          setReceipts(generateMockData());
         }
       } finally {
         if (!isCancelled) {
@@ -277,30 +286,26 @@ const App: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [dataSource, timeDiffThreshold, selectedConnectionTypes]);
+  }, [dataSource]);
 
-  // Filter receipts by type
-  useEffect(() => {
-    if (selectedType === 'all') {
-      setFilteredReceipts(receipts);
-    } else {
-      setFilteredReceipts(receipts.filter(r => r.type === selectedType));
-    }
-  }, [receipts, selectedType]);
+  // Derived during render (no effect needed): receipts visible under the type filter
+  const filteredReceipts = useMemo(
+    () => (selectedType === 'all' ? receipts : receipts.filter(r => r.type === selectedType)),
+    [receipts, selectedType]
+  );
 
-  // Recalculate connections when threshold or selected types change
-  useEffect(() => {
-    if (receipts.length > 0) {
-      const allConnections = findAllConnections(receipts, {
+  // Derived during render: connections recomputed when the data or tuning knobs change
+  const allConnections = useMemo(
+    () =>
+      findAllConnections(receipts, {
         temporalThresholdMs: timeDiffThreshold,
         includeLocation: selectedConnectionTypes.has('location'),
         includeArtist: selectedConnectionTypes.has('artist'),
         includeSocial: selectedConnectionTypes.has('social'),
         includeChains: selectedConnectionTypes.has('chain')
-      });
-      setAllConnections(allConnections);
-    }
-  }, [receipts, timeDiffThreshold, selectedConnectionTypes]);
+      }),
+    [receipts, timeDiffThreshold, selectedConnectionTypes]
+  );
 
   const typeOptions = [
     { label: 'All Types', value: 'all' },
@@ -335,105 +340,106 @@ const App: React.FC = () => {
       case 'event':
         return (receipt as EventReceipt).title;
       case 'note':
-        return (receipt as NoteReceipt).content.substring(0, 30) + (receipt as NoteReceipt).content.length > 30 ? '...' : '';
+        return (receipt as NoteReceipt).content.length > 30
+          ? (receipt as NoteReceipt).content.substring(0, 30) + '...'
+          : (receipt as NoteReceipt).content;
       default:
-        return receipt.type;
+        return (receipt as Receipt).type;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6 transition-colors dark:from-slate-950 dark:to-slate-900">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          Your Life, In Receipts
-        </h1>
-        <p className="text-lg text-gray-600 max-w-2xl">
-          Explore the connections in your digital life - transform disconnected moments into meaningful stories
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-3 flex items-center gap-3 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              Your Life, In Receipts
+            </h1>
+            <p className="max-w-2xl text-lg text-gray-600 dark:text-slate-400">
+              Explore the connections in your digital life - transform disconnected moments into meaningful stories
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
 
         {/* Data Source Controls */}
-        <div className="flex flex-wrap gap-4 mt-4">
-          <div className="flex items-center space-x-3">
-            <span className="text-sm font-medium text-gray-700">Data Source:</span>
-            <div className="flex space-x-2">
-              <label className="flex items-center space-x-1">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="mock"
-                  checked={dataSource === 'mock'}
-                  onChange={(e) => setDataSource(e.target.value)}
-                  className="h-4 w-4 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Mock Data</span>
-              </label>
-              <label className="flex items-center space-x-1">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="spotify"
-                  checked={dataSource === 'spotify'}
-                  onChange={(e) => setDataSource(e.target.value)}
-                  className="h-4 w-4 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Spotify Sample</span>
-              </label>
-              <label className="flex items-center space-x-1">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="transactions"
-                  checked={dataSource === 'transactions'}
-                  onChange={(e) => setDataSource(e.target.value)}
-                  className="h-4 w-4 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">Transactions Sample</span>
-              </label>
-              <label className="flex items-center space-x-1">
-                <input
-                  type="radio"
-                  name="dataSource"
-                  value="india"
-                  checked={dataSource === 'india'}
-                  onChange={(e) => setDataSource(e.target.value)}
-                  className="h-4 w-4 text-indigo-600"
-                />
-                <span className="text-sm text-gray-700">India Transact Sample</span>
-              </label>
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-slate-300">
+              <Database className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+              Data Source:
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: 'mock', label: 'Mock Data' },
+                { value: 'spotify', label: 'Spotify Sample' },
+                { value: 'transactions', label: 'Transactions Sample' },
+                { value: 'india', label: 'India Transact Sample' }
+              ] as const).map(option => {
+                const isActive = dataSource === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    onClick={() => setDataSource(option.value)}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-sm font-medium transition-all',
+                      isActive
+                        ? 'border-transparent bg-indigo-600 text-white shadow-sm shadow-indigo-500/30'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/60 dark:hover:text-indigo-300'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
+
           {/* Loading Status */}
           {isLoading && (
-            <div className="flex items-center space-x-2 text-sm text-indigo-600">
-              <div className="flex h-5 w-5 items-center justify-center rounded border border-indigo-300">
-                <div className="h-2.5 w-2.5 bg-indigo-600 rounded-full animate-ping"></div>
-              </div>
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-300"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" />
               <span>Loading data...</span>
-            </div>
+            </motion.div>
           )}
 
           {/* Error Message */}
           {loadError && (
-            <div className="flex items-center space-x-2 text-sm text-red-600 bg-red-50 px-3 py-1 rounded">
-              <span className="text-red-500">⚠️</span>
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300"
+            >
+              <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{loadError}</span>
-            </div>
+            </motion.div>
           )}
         </div>
       </header>
 
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-6">
-        <div className="px-6 py-4">
-          <div className="flex flex-wrap gap-4 items-start">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+      <Card className="mb-6">
+        <CardContent className="pt-4">
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-300">
                 Filter by Type:
               </label>
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-800 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
               >
                 {typeOptions.map(option => (
                   <option key={option.value} value={option.value}>
@@ -443,11 +449,11 @@ const App: React.FC = () => {
               </select>
             </div>
 
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-300">
                 Connection Sensitivity (time threshold):
               </label>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-3">
                 <input
                   type="range"
                   min="300000"
@@ -455,221 +461,168 @@ const App: React.FC = () => {
                   step="300000"
                   value={timeDiffThreshold}
                   onChange={(e) => setTimeDiffThreshold(Number(e.target.value))}
-                  className="flex-1"
+                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-200 accent-indigo-600 dark:bg-slate-700"
                 />
-                <span className="text-sm text-gray-500">
+                <span className="inline-flex min-w-[64px] justify-center rounded-md bg-indigo-50 px-2 py-1 text-sm font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
                   {Math.round(timeDiffThreshold / 60000)} min
                 </span>
               </div>
             </div>
 
-            <div className="flex-1 min-w-[200px] mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="mt-4 min-w-[200px] flex-1">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-slate-300">
                 Connection Types:
               </label>
-              <div className="grid gap-2 grid-cols-2">
-                <label className="flex items-start space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedConnectionTypes.has('temporal')}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedConnectionTypes);
-                      if (e.target.checked) {
-                        newSet.add('temporal');
-                      } else {
-                        newSet.delete('temporal');
-                      }
-                      setSelectedConnectionTypes(newSet);
-                    }}
-                    className="h-4 w-4 text-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">Temporal (time)</span>
-                </label>
-                <label className="flex items-start space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedConnectionTypes.has('location')}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedConnectionTypes);
-                      if (e.target.checked) {
-                        newSet.add('location');
-                      } else {
-                        newSet.delete('location');
-                      }
-                      setSelectedConnectionTypes(newSet);
-                    }}
-                    className="h-4 w-4 text-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">Location</span>
-                </label>
-                <label className="flex items-start space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedConnectionTypes.has('artist')}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedConnectionTypes);
-                      if (e.target.checked) {
-                        newSet.add('artist');
-                      } else {
-                        newSet.delete('artist');
-                      }
-                      setSelectedConnectionTypes(newSet);
-                    }}
-                    className="h-4 w-4 text-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">Artist/Mention</span>
-                </label>
-                <label className="flex items-start space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedConnectionTypes.has('social')}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedConnectionTypes);
-                      if (e.target.checked) {
-                        newSet.add('social');
-                      } else {
-                        newSet.delete('social');
-                      }
-                      setSelectedConnectionTypes(newSet);
-                    }}
-                    className="h-4 w-4 text-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">Social (People)</span>
-                </label>
-                <label className="flex items-start space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedConnectionTypes.has('chain')}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedConnectionTypes);
-                      if (e.target.checked) {
-                        newSet.add('chain');
-                      } else {
-                        newSet.delete('chain');
-                      }
-                      setSelectedConnectionTypes(newSet);
-                    }}
-                    className="h-4 w-4 text-indigo-600"
-                  />
-                  <span className="text-sm text-gray-700">Activity Chains</span>
-                </label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { key: 'temporal', label: 'Temporal (time)' },
+                  { key: 'location', label: 'Location' },
+                  { key: 'artist', label: 'Artist/Mention' },
+                  { key: 'social', label: 'Social (People)' },
+                  { key: 'chain', label: 'Activity Chains' }
+                ] as const).map(option => {
+                  const checked = selectedConnectionTypes.has(option.key);
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      onClick={() => {
+                        const newSet = new Set(selectedConnectionTypes);
+                        if (newSet.has(option.key)) {
+                          newSet.delete(option.key);
+                        } else {
+                          newSet.add(option.key);
+                        }
+                        setSelectedConnectionTypes(newSet);
+                      }}
+                      className="flex items-center gap-2 text-left"
+                    >
+                      <span
+                        className={cn(
+                          'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                          checked
+                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                            : 'border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-900'
+                        )}
+                      >
+                        {checked && (
+                          <svg viewBox="0 0 12 12" className="h-3 w-3 fill-none stroke-current stroke-[2.5]">
+                            <path d="M2.5 6.5 5 9l4.5-5.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="text-sm text-gray-700 dark:text-slate-300">{option.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6">
         {/* Stats Panel */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-          <div className="px-6 py-4">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              Overview
-            </h2>
-            <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <p className="text-gray-500">Total Receipts:</p>
-                  <p className="font-medium text-gray-800">{receipts.length}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Filtered View:</p>
-                  <p className="font-medium text-gray-800">{filteredReceipts.length}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Date Range:</p>
-                  <p className="font-medium text-gray-800">
-                    {receipts.length > 0 ? (
-                      `${new Date(Math.min(...receipts.map(r => new Date(r.timestamp).getTime()))).toLocaleDateString()} - ` +
-                      `${new Date(Math.max(...receipts.map(r => new Date(r.timestamp).getTime()))).toLocaleDateString()}`
-                    ) : 'No data'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Connections Found</h3>
-                <div className="space-y-1">
-                  {allConnections.map(connType => {
-                    const count = connType.data.length || (connType.data.receipts ? 1 : 0);
-                    const typeLabels: Record<string, string> = {
-                      temporal: '⏰ Temporal',
-                      location: '📍 Location-based',
-                      artist: '🎵 Artist/Mentions',
-                      'location-name': '📍 Location Names',
-                      social: '👥 Social Connections',
-                      chain: '🔗 Activity Chains'
-                    };
-                    return (
-                      <div key={connType.type} className="flex justify-between text-sm">
-                        <span>{typeLabels[connType.type] || connType.type}:</span>
-                        <span className="font-medium text-gray-800">{count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="mb-4">Overview</CardTitle>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <StatTile label="Total Receipts" value={receipts.length} />
+              <StatTile label="Filtered View" value={filteredReceipts.length} />
+              <StatTile
+                label="Date Range"
+                value={
+                  receipts.length > 0 ? (
+                    <>
+                      {new Date(Math.min(...receipts.map(r => new Date(r.timestamp).getTime()))).toLocaleDateString()}
+                      {' – '}
+                      {new Date(Math.max(...receipts.map(r => new Date(r.timestamp).getTime()))).toLocaleDateString()}
+                    </>
+                  ) : (
+                    'No data'
+                  )
+                }
+              />
             </div>
-          </div>
-        </div>
+
+            <div className="mt-5 space-y-1">
+              <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-gray-800 dark:text-slate-100">
+                <Network className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+                Connections Found
+              </h3>
+              {allConnections.map(connType => {
+                const count = connType.data.length || (connType.data.receipts ? 1 : 0);
+                const Icon = CONNECTION_ICONS[connType.type] ?? Network;
+                return (
+                  <div key={connType.type} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 text-gray-600 dark:text-slate-300">
+                      <Icon className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+                      {CONNECTION_LABELS[connType.type] || connType.type}
+                    </span>
+                    <span className="font-semibold text-gray-800 tabular-nums dark:text-slate-100">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardHeader>
+        </Card>
 
         {/* Receipts Grid */}
-        <div className="col-span-2 bg-white rounded-xl shadow-lg border border-gray-200">
-          <div className="px-6 py-4">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
+        <Card className="col-span-2">
+          <CardHeader>
+            <CardTitle className="mb-4">
               {selectedType === 'all' ? 'All Receipts' : `${typeOptions.find(o => o.value === selectedType)?.label} Receipts`}
-            </h2>
+            </CardTitle>
 
             {filteredReceipts.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No receipts match the current filters.</p>
+              <p className="py-8 text-center text-gray-500 dark:text-slate-400">No receipts match the current filters.</p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredReceipts.map(receipt => (
-                  <ReceiptCard
-                    key={receipt.id}
-                    receipt={receipt}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filteredReceipts.slice(0, MAX_VISIBLE_RECEIPTS).map((receipt, index) => (
+                    <ReceiptCard
+                      key={receipt.id}
+                      receipt={receipt}
+                      index={index}
+                    />
+                  ))}
+                </div>
+                {filteredReceipts.length > MAX_VISIBLE_RECEIPTS && (
+                  <p className="mt-4 text-center text-sm text-gray-500 dark:text-slate-400">
+                    Showing first {MAX_VISIBLE_RECEIPTS} of {filteredReceipts.length} receipts in this dataset
+                  </p>
+                )}
+              </>
             )}
-          </div>
-        </div>
+          </CardHeader>
+        </Card>
 
         {/* Connections Visualization */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-          <div className="px-6 py-4">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              Discovered Connections
-            </h2>
-            <p className="text-gray-600 mb-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="mb-2">Discovered Connections</CardTitle>
+            <CardDescription className="mb-4">
               Explore different types of connections in your digital life
-            </p>
+            </CardDescription>
 
             {allConnections.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No connections found with current filters.</p>
+              <p className="py-8 text-center text-gray-500 dark:text-slate-400">No connections found with current filters.</p>
             ) : (
               <>
                 {/* Connection type summary */}
-                <div className="mb-4 p-3 bg-gray-50 rounded">
+                <div className="mb-4 rounded-lg bg-gray-50 p-3 dark:bg-slate-950/40">
                   <div className="flex flex-wrap gap-2">
                     {allConnections.map(connType => {
                       const count = connType.data.length || (connType.data.receipts ? 1 : 0);
-                      const typeLabels: Record<string, string> = {
-                        temporal: '⏰ Temporal',
-                        location: '📍 Location-based',
-                        artist: '🎵 Artist/Mentions',
-                        'location-name': '📍 Location Names',
-                        social: '👥 Social Connections',
-                        chain: '🔗 Activity Chains'
-                      };
+                      const Icon = CONNECTION_ICONS[connType.type] ?? Network;
                       const isSelected = selectedConnectionTypes.has(connType.type);
                       return (
-                        <span
-                          key={connType.type}
-                          className={`px-3 py-1 rounded text-sm ${isSelected ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-200 text-gray-600'}`
-                        >
-                          {typeLabels[connType.type] || connType.type}: {count}
-                        </span>
+                        <Badge key={connType.type} variant={isSelected ? 'default' : 'secondary'}>
+                          <Icon className="h-3 w-3" />
+                          {CONNECTION_LABELS[connType.type] || connType.type}: {count}
+                        </Badge>
                       );
                     })}
                   </div>
@@ -681,20 +634,17 @@ const App: React.FC = () => {
                     // Skip if not selected
                     if (!selectedConnectionTypes.has(connType.type)) return null;
 
-                    let title: string;
-                    let icon: string;
-                    const typeLabels: Record<string, {title: string; icon: string}> = {
-                      temporal: {title: 'Temporal Connections', icon: '⏰'},
-                      location: {title: 'Location-Based Connections', icon: '📍'},
-                      artist: {title: 'Artist & Mention Connections', icon: '🎵'},
-                      'location-name': {title: 'Location Name Matches', icon: '📍'},
-                      social: {title: 'Social Connections (People)', icon: '👥'},
-                      chain: {title: 'Activity Chains', icon: '🔗'}
+                    const titles: Record<string, string> = {
+                      temporal: 'Temporal Connections',
+                      location: 'Location-Based Connections',
+                      artist: 'Artist & Mention Connections',
+                      'location-name': 'Location Name Matches',
+                      social: 'Social Connections (People)',
+                      chain: 'Activity Chains'
                     };
 
-                    const labelInfo = typeLabels[connType.type] || {title: connType.type, icon: '🔗'};
-                    title = labelInfo.title;
-                    icon = labelInfo.icon;
+                    const title = titles[connType.type] || connType.type;
+                    const Icon = CONNECTION_ICONS[connType.type] ?? Link2;
 
                     // Handle different data types
                     if (connType.type === 'chain') {
@@ -707,38 +657,38 @@ const App: React.FC = () => {
                       }>;
 
                       return (
-                        <div key={typeIndex} className="border-l-4 border-indigo-200 pl-3 py-2">
-                          <div className="flex items-start space-x-3 mb-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm text-indigo-600">
-                              {icon}
+                        <div key={typeIndex} className="rounded-lg border-l-4 border-indigo-300 py-2 pl-3 dark:border-indigo-500/60">
+                          <div className="mb-2 flex items-start gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+                              <Icon className="h-4 w-4" />
                             </div>
                             <div className="flex-1 space-y-1">
-                              <h3 className="font-medium text-gray-800">{title}</h3>
-                              <p className="text-sm text-gray-600">
+                              <h3 className="font-medium text-gray-800 dark:text-slate-100">{title}</h3>
+                              <p className="text-sm text-gray-600 dark:text-slate-400">
                                 Found {chains.length} activity chains representing potential experiences
                               </p>
                             </div>
                           </div>
                           <div className="space-y-2">
                             {chains.slice(0, 3).map((chain, chainIndex) => (
-                              <div key={chainIndex} className="p-2 bg-indigo-50 rounded">
-                                <div className="text-sm font-medium text-gray-800">
+                              <div key={chainIndex} className="rounded-lg bg-indigo-50 p-2 dark:bg-indigo-500/10">
+                                <div className="text-sm font-medium text-gray-800 dark:text-slate-100">
                                   {chain.description}
                                 </div>
-                                <div className="text-xs text-gray-500">
+                                <div className="text-xs text-gray-500 dark:text-slate-400">
                                   {new Date(chain.startTime).toLocaleTimeString()} → {new Date(chain.endTime).toLocaleTimeString()}
                                 </div>
-                                <div className="flex flex-wrap gap-2 mt-1">
+                                <div className="mt-1 flex flex-wrap gap-2">
                                   {chain.receipts.map((receipt, rIndex) => (
-                                    <span key={rIndex} className="px-2 py-0.5 text-xs bg-gray-200 rounded">
+                                    <Badge key={rIndex} variant="secondary">
                                       {receipt.type}
-                                    </span>
+                                    </Badge>
                                   ))}
                                 </div>
                               </div>
                             ))}
                             {chains.length > 3 && (
-                              <p className="text-center text-sm text-gray-500 mt-2">
+                              <p className="mt-2 text-center text-sm text-gray-500 dark:text-slate-400">
                                 and {chains.length - 3} more chains...
                               </p>
                             )}
@@ -751,14 +701,14 @@ const App: React.FC = () => {
                     const connectionsArray = connType.data as Array<any>;
 
                     return (
-                      <div key={typeIndex} className="border-l-4 border-indigo-200 pl-3 py-2">
-                        <div className="flex items-start space-x-3 mb-2">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm text-indigo-600">
-                            {icon}
+                      <div key={typeIndex} className="rounded-lg border-l-4 border-indigo-300 py-2 pl-3 dark:border-indigo-500/60">
+                        <div className="mb-2 flex items-start gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+                            <Icon className="h-4 w-4" />
                           </div>
                           <div className="flex-1 space-y-1">
-                            <h3 className="font-medium text-gray-800">{title}</h3>
-                            <p className="text-sm text-gray-600">
+                            <h3 className="font-medium text-gray-800 dark:text-slate-100">{title}</h3>
+                            <p className="text-sm text-gray-600 dark:text-slate-400">
                               Found {connectionsArray.length} connections
                             </p>
                           </div>
@@ -803,34 +753,40 @@ const App: React.FC = () => {
                             }
 
                             return (
-                              <div key={connIndex} className="p-2 bg-indigo-50 rounded">
-                                <div className="flex items-start space-x-3">
-                                  <div className="flex h-8 w-8 items-center justify-center rounded-lg text-sm text-indigo-600">
-                                    🔗
+                              <motion.div
+                                key={connIndex}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.2, delay: connIndex * 0.05 }}
+                                className="rounded-lg bg-indigo-50 p-2 transition-colors hover:bg-indigo-100/70 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-300">
+                                    <Link2 className="h-4 w-4" />
                                   </div>
                                   <div className="flex-1 space-y-1 text-sm">
-                                    <div className="flex justify-between text-gray-700">
+                                    <div className="flex justify-between text-gray-700 dark:text-slate-200">
                                       <span>
                                         {receipt1.type === receipt2.type ?
                                           `${receipt1.type}` :
                                           `${receipt1.type} → ${receipt2.type}`}
                                       </span>
-                                      <span className="text-gray-500">
+                                      <span className="text-gray-500 dark:text-slate-400">
                                         {connectionInfo}
                                       </span>
                                     </div>
-                                    <div className="text-gray-600">
-                                      <span className="font-medium">{getReceiptDisplayText(receipt1)}</span>
+                                    <div className="text-gray-600 dark:text-slate-400">
+                                      <span className="font-medium text-gray-800 dark:text-slate-100">{getReceiptDisplayText(receipt1)}</span>
                                       {' → '}
-                                      <span className="font-medium">{getReceiptDisplayText(receipt2)}</span>
+                                      <span className="font-medium text-gray-800 dark:text-slate-100">{getReceiptDisplayText(receipt2)}</span>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
+                              </motion.div>
                             );
                           })}
                           {connectionsArray.length > 3 && (
-                            <p className="text-center text-sm text-gray-500 mt-2">
+                            <p className="mt-2 text-center text-sm text-gray-500 dark:text-slate-400">
                               and {connectionsArray.length - 3} more connections...
                             </p>
                           )}
@@ -841,13 +797,13 @@ const App: React.FC = () => {
                 </div>
               </>
             )}
-          </div>
-        </div>
+          </CardHeader>
+        </Card>
       </div>
 
-      <footer className="mt-8 text-center text-gray-500 text-sm">
-        Built for WebRush Hackathon • Frontend-only solution •
-        <a href="#" className="text-indigo-600 hover:underline">
+      <footer className="mt-8 text-center text-sm text-gray-500 dark:text-slate-500">
+        Built for WebRush Hackathon • Frontend-only solution •{' '}
+        <a href="#" className="text-indigo-600 hover:underline dark:text-indigo-400">
           View on GitHub
         </a>
       </footer>

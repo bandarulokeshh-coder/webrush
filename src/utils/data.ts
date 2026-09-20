@@ -5,6 +5,7 @@ export interface MusicReceipt {
   timestamp: string; // ISO date
   artist: string;
   track: string;
+  album?: string; // album name
   duration?: number; // in seconds
 }
 
