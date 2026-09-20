@@ -13,6 +13,8 @@ Everything runs in the browser: no backend, no server-side parsing, no data
 leaves the machine. Datasets are `fetch`ed as static CSV files out of `public/`
 and parsed in TypeScript.
 
+**Live demo:** <https://webrush-three.vercel.app>
+
 ## Features
 
 **Receipt feed**
@@ -123,8 +125,28 @@ src/
     data.ts                  Receipt + connection types and the detectors
     dataLoader.ts            CSV parsing for each dataset
 public/datasets/             Sample CSVs served to the browser
-datasets/                    Full raw datasets (not served, see Privacy)
+datasets/                    Full raw datasets (not served, see Dataset provenance)
 ```
+
+## Deployment
+
+Hosted on Vercel: **<https://webrush-three.vercel.app>**
+
+The output is a plain static Vite bundle, so Vercel needs no configuration — the
+Vite preset runs `npm run build` and serves `dist/`. There is no server-side code,
+no API routes and no environment variables.
+
+To redeploy from the CLI (the project is already linked):
+
+```bash
+vercel --prod
+```
+
+`.vercelignore` keeps the raw `datasets/` folder out of the upload — roughly 20 MB
+that no build step reads. The pattern is deliberately written `/datasets/` with a
+leading slash so it anchors to the repository root: an unanchored `datasets/` would
+also match `public/datasets/`, which is precisely what the browser fetches at
+runtime, and the app would load no data at all.
 
 ## Dataset provenance
 

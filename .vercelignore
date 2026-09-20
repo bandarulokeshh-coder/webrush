@@ -1,0 +1,9 @@
+# The raw source datasets (~20 MB) are only used offline to regenerate the
+# trimmed samples in public/datasets/, so they never need to be uploaded for a
+# build. The leading slash anchors this pattern to the repo root: it must NOT
+# match public/datasets/, which is what the deployed site actually serves.
+/datasets/
+
+# Local scratch files
+*.log
+/test.txt
